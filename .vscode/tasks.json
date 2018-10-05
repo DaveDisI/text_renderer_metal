@@ -4,9 +4,9 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "build",
+            "label": "build and run",
             "type": "shell",
-            "command": "g++ text_renderer_metal.mm -o text_renderer_metal -framework Cocoa -framework Metal -framework MetalKit && ./text_renderer_metal",
+            "command": "g++ text_renderer_metal.mm -o text_renderer_metal -framework Cocoa -framework Metal -framework MetalKit -framework AudioToolbox && ./text_renderer_metal",
             "group": {
                 "kind":"build",
                 "isDefault": true,
@@ -14,7 +14,7 @@
             "problemMatcher": "$msCompile"
         },
         {
-            "label": "test",
+            "label": "run",
             "type": "shell",
             "command": "./text_renderer_metal",
             "group": {

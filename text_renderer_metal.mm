@@ -32,20 +32,35 @@ fragment float4 fragmentShader(VertOutData in [[stage_in]], texture2d<half> colo
 }\
 ";
 
+
+#include <stdlib.h>
+#include <math.h>
+
+#include <AudioToolbox/AudioQueue.h>
+#include <CoreAudio/CoreAudioTypes.h>
+#include <CoreFoundation/CFRunLoop.h>
+
+#define NUM_BUFFERS 3
+#define BUFFER_SIZE 4096
+#define SAMPLE_TYPE short
+#define MAX_NUMBER 32767
+#define SAMPLE_RATE 44100
+
+unsigned int count;
+
 int main(int argc, char** argv){
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     [NSApp sharedApplication];
 
-    NSData* dta = [NSData dataWithContentsOfFile: @"Times New Roman.ttf"];
+    NSData* dta = [NSData dataWithContentsOfFile: @"Arial.ttf"];
     unsigned char* fontData = (unsigned char*)[dta bytes];
 
-    int totChar = 126 - 32;
+    int totChar = 127 - 32;
     Bitmap* bmArr = new Bitmap[totChar];
     for(int i = 0; i < totChar; i++){
         unsigned char c = i + 32;
         bmArr[i].bytes = getReducedBitmapFromCharCode(fontData, c, &bmArr[i].width, &bmArr[i].height, 32);
     }
-    NSLog(@"%i\n\n\n", totChar);
     BitmapAtlas bitmapAtlas = createBitmapAtlas(bmArr, totChar);
     unsigned char* bitmap = bitmapAtlas.bitmapData;
     unsigned int glyphWidth = bitmapAtlas.totalWidth; 
