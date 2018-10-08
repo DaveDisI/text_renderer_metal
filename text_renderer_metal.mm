@@ -3,8 +3,11 @@
 #include <MetalKit/MetalKit.h>
 
 #include "graphics_math.h"
-#include "bitmap_modifier.h"
+#include "font_atlas.cpp"
 #include "truetype_parser.h"
+
+#include <stdlib.h>
+#include <math.h>
 
 struct UniformData{
     mat4 mvp;
@@ -32,39 +35,73 @@ fragment float4 fragmentShader(VertOutData in [[stage_in]], texture2d<half> colo
 }\
 ";
 
+int vertexCount = 0;
 
-#include <stdlib.h>
-#include <math.h>
+void renderText(float* vecPtr, FontAtlas* fa, const char* text, int x, int y, unsigned int scale){
+    int ctr = 0;
+    int xMarker = x;
+    while(*text != '\0'){
+        char c = *text;
+        for(int i = 0; i < fa->totalCharacters; i++){
+            if(c == fa->characterCodes[i]){
+                printf("characterCode: %c\n", fa->characterCodes[i]);
+                printf("width: %i\n", fa->widths[i]);
+                printf("height: %i\n", fa->heights[i]);
+                printf("xOffset: %i\n", fa->xOffsets[i]);
+                printf("yOffset: %i\n", fa->yOffsets[i]);
+                printf("totalWidth: %i\n", fa->totalBitmapWidth);
+                printf("totalHeight: %i\n", fa->totalBitmapHeight);
 
-#include <AudioToolbox/AudioQueue.h>
-#include <CoreAudio/CoreAudioTypes.h>
-#include <CoreFoundation/CFRunLoop.h>
 
-#define NUM_BUFFERS 3
-#define BUFFER_SIZE 4096
-#define SAMPLE_TYPE short
-#define MAX_NUMBER 32767
-#define SAMPLE_RATE 44100
+                vecPtr[ctr++] = xMarker; vecPtr[ctr++] = y;
+                vecPtr[ctr++] = (float)fa->xOffsets[i] / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)fa->yOffsets[i] / (float)fa->totalBitmapHeight;
+                vertexCount++;
 
-unsigned int count;
+                vecPtr[ctr++] = xMarker; vecPtr[ctr++] = y + fa->heights[i];
+                vecPtr[ctr++] = (float)fa->xOffsets[i] / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)(fa->yOffsets[i] + fa->heights[i]) / (float)fa->totalBitmapHeight;
+                vertexCount++;
+
+                vecPtr[ctr++] = xMarker + fa->widths[i]; vecPtr[ctr++] = y + fa->heights[i];
+                vecPtr[ctr++] = (float)(fa->xOffsets[i] + fa->widths[i]) / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)(fa->yOffsets[i] + fa->heights[i]) / (float)fa->totalBitmapHeight;
+                vertexCount++;
+
+                vecPtr[ctr++] = xMarker + fa->widths[i]; vecPtr[ctr++] = y + fa->heights[i];
+                vecPtr[ctr++] = (float)(fa->xOffsets[i] + fa->widths[i]) / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)(fa->yOffsets[i] + fa->heights[i]) / (float)fa->totalBitmapHeight;
+                vertexCount++;
+
+                vecPtr[ctr++] = xMarker + fa->widths[i]; vecPtr[ctr++] = y;
+                vecPtr[ctr++] = (float)(fa->xOffsets[i] + fa->widths[i]) / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)fa->yOffsets[i] / (float)fa->totalBitmapHeight;
+                vertexCount++;
+
+                vecPtr[ctr++] = xMarker; vecPtr[ctr++] = y;
+                vecPtr[ctr++] = (float)fa->xOffsets[i] / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)fa->yOffsets[i] / (float)fa->totalBitmapHeight;
+                vertexCount++;
+
+                xMarker += fa->widths[i];
+                break;
+            }
+        }
+        text++;
+    }
+}
 
 int main(int argc, char** argv){
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     [NSApp sharedApplication];
 
-    NSData* dta = [NSData dataWithContentsOfFile: @"Arial.ttf"];
+    NSData* dta = [NSData dataWithContentsOfFile: @"Courier New.ttf"];
     unsigned char* fontData = (unsigned char*)[dta bytes];
 
-    int totChar = 127 - 32;
-    Bitmap* bmArr = new Bitmap[totChar];
-    for(int i = 0; i < totChar; i++){
-        unsigned char c = i + 32;
-        bmArr[i].bytes = getReducedBitmapFromCharCode(fontData, c, &bmArr[i].width, &bmArr[i].height, 32);
+    unsigned short* charCodes = new unsigned short[95];
+    for(int i = 0; i < 95; i++){
+        charCodes[i] = (unsigned short)(i + 32);
     }
-    BitmapAtlas bitmapAtlas = createBitmapAtlas(bmArr, totChar);
-    unsigned char* bitmap = bitmapAtlas.bitmapData;
-    unsigned int glyphWidth = bitmapAtlas.totalWidth; 
-    unsigned int glyphHeight = bitmapAtlas.totalHeight;
+    FontAtlas fa;
+    buildFontAtlas(&fa, fontData, 95, charCodes);
+
+    unsigned char* bitmap = fa.bitmap;
+    unsigned int glyphWidth = fa.totalBitmapWidth; 
+    unsigned int glyphHeight = fa.totalBitmapHeight;
     
     NSUInteger windowStyle = NSWindowStyleMaskTitled        | 
                              NSWindowStyleMaskClosable      | 
@@ -141,20 +178,23 @@ int main(int argc, char** argv){
 		commandQueue = [device newCommandQueue];
     }
     float sz = 200;
-    float triangleVertices[12][2] = {
-            {-sz, -sz}, {0, 0},   
-            {-sz, sz}, {0, 1}, 
-            {sz, sz}, {1, 1},
-            {sz, sz}, {1, 1},  
-            {sz, -sz}, {1, 0},   
-            {-sz, -sz}, {0, 0}
+    float triangleVertices[24] = {
+            -sz, -sz, 0, 0,   
+            -sz, sz, 0, 1, 
+            sz, sz, 1, 1,
+            sz, sz, 1, 1,  
+            sz, -sz, 1, 0,   
+            -sz, -sz, 0, 0
     };
 
-    mat4 mvp = setOrthogonalProjection(-450, 450, -250, 250, -1, 1);
+    mat4 mvp = setOrthogonalProjection(0, 900, 0, 500, -1, 1);
 
-    id<MTLBuffer> vertBuffer = [device newBufferWithBytes: triangleVertices
-                                        length: sizeof(triangleVertices)
+    id<MTLBuffer> vertBuffer = [device newBufferWithLength:1000
                                         options: MTLResourceStorageModeShared];
+    float* vpvp = (float*)vertBuffer.contents;
+
+    renderText(vpvp, &fa, "Oh My God! Texters", 0, 0, 1);
+
     id<MTLBuffer> uniBuffer = [device newBufferWithBytes: &mvp.m[0][0]
                                         length: sizeof(float) * 16
                                         options: MTLResourceStorageModeShared];
@@ -246,7 +286,7 @@ int main(int argc, char** argv){
 
             [renderEncoder drawPrimitives:MTLPrimitiveTypeTriangle
                         vertexStart:0
-                        vertexCount:6];
+                        vertexCount:vertexCount];
             [renderEncoder endEncoding];
             [commandBuffer presentDrawable:view.currentDrawable];
         }

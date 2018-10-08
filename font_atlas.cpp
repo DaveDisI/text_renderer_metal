@@ -1,20 +1,14 @@
-#pragma once
+#include "font_atlas.h"
+#include "truetype_parser.h"
 
 struct Bitmap {
     unsigned int width;
     unsigned int height;
+    unsigned short charCode;
     unsigned char* bytes;
-};
 
-struct BitmapAtlas {
-    unsigned int totalBitmaps;
-    unsigned int totalWidth;
-    unsigned int totalHeight;
-    unsigned char* bitmapData;
-    unsigned int* widths;
-    unsigned int* heights;
-    unsigned int* xOffsets;
-    unsigned int* yOffsets;
+    Bitmap(){}
+    Bitmap(unsigned char* bytes, unsigned width, unsigned height): width(width), height(height), bytes(bytes){}
 };
 
 struct Rectangle {
@@ -144,15 +138,7 @@ struct RectNode{
     }
 };
 
-Bitmap genBitmap(unsigned char* bytes, unsigned width, unsigned height){
-    Bitmap b;
-    b.bytes = bytes;
-    b.width = width;
-    b.height = height;
-    return b;
-}
-
-void sortBitmapsByDescendingArea(Bitmap* bitmaps, unsigned int totalBitmaps){
+static void sortBitmapsByDescendingArea(Bitmap* bitmaps, unsigned int totalBitmaps){
     for(int i = 0; i < totalBitmaps - 1; i++){
         for(int j = i + 1; j < totalBitmaps; j++){
             unsigned int area1 = bitmaps[i].width * bitmaps[i].height;
@@ -166,7 +152,7 @@ void sortBitmapsByDescendingArea(Bitmap* bitmaps, unsigned int totalBitmaps){
     }
 }
 
-void flattenNodeTree(RectNode* node, RectangleList* list){
+static void flattenNodeTree(RectNode* node, RectangleList* list){
     if(node->child1){
         flattenNodeTree(node->child1, list);
     }
@@ -178,7 +164,7 @@ void flattenNodeTree(RectNode* node, RectangleList* list){
     }
 }
 
-void clearNodeTree(RectNode* node){
+static void clearNodeTree(RectNode* node){
     if(node->child1){
         clearNodeTree(node->child1);
     }
@@ -190,39 +176,58 @@ void clearNodeTree(RectNode* node){
     }
 }
 
-void clearBitmapAtlas(BitmapAtlas* ba){
-    if(ba->bitmapData) delete ba->bitmapData;
-    if(ba->widths) delete ba->widths;
-    if(ba->widths) delete ba->heights;
-    if(ba->xOffsets) delete ba->xOffsets;
-    if(ba->yOffsets) delete ba->yOffsets;
+void clearFontAtlas(FontAtlas* fa){
+    fa->id = -1;
+    fa->totalCharacters = 0;
+    if(fa->bitmap) delete[] fa->bitmap;
+    if(fa->characterCodes) delete[] fa->characterCodes;
+    if(fa->xOffsets) delete[] fa->xOffsets;
+    if(fa->yOffsets) delete[] fa->yOffsets;
+    if(fa->widths) delete[] fa->widths;
+    if(fa->heights) delete[] fa->heights;
+    if(fa->descents) delete[] fa->descents;
 }
 
-BitmapAtlas createBitmapAtlas(Bitmap* bitmaps, unsigned int totalBitmaps){
+void buildFontAtlas(FontAtlas* fa, unsigned char* fontFileData, unsigned int totalCharacters, unsigned short* charCodes){
+    unsigned int totalAcceptedChars = 0;
+    Bitmap* bitmaps = new Bitmap[totalCharacters];
+    for(int i = 0; i < totalCharacters; i++){
+        unsigned int w, h;
+        unsigned char* dats = getReducedBitmapFromCharCode(fontFileData, charCodes[i], &w, &h, 32);
+        if(dats){
+            bitmaps[totalAcceptedChars].bytes = dats;
+            bitmaps[totalAcceptedChars].width = w;
+            bitmaps[totalAcceptedChars].height = h;
+            bitmaps[totalAcceptedChars].charCode = charCodes[i];
+            totalAcceptedChars++;
+        }
+    }
+
     static const unsigned int MAX_SIZE = 375;
-    sortBitmapsByDescendingArea(bitmaps, totalBitmaps);
+    sortBitmapsByDescendingArea(bitmaps, totalAcceptedChars);
     RectNode* node = new RectNode;
     node->rect = Rectangle(0, MAX_SIZE, 0, MAX_SIZE);
-    for(int i = 0; i < totalBitmaps; i++){
+    for(int i = 0; i < totalAcceptedChars; i++){
         node->add(bitmaps[i]);
     }
     RectangleList rects;
     flattenNodeTree(node, &rects);
     clearNodeTree(node);
-    
-    BitmapAtlas ba;
-    ba.widths = new unsigned int[totalBitmaps];
-    ba.heights = new unsigned int[totalBitmaps];
-    ba.xOffsets = new unsigned int[totalBitmaps];
-    ba.yOffsets = new unsigned int[totalBitmaps];
+
+    fa->widths = new unsigned int[totalAcceptedChars];
+    fa->heights = new unsigned int[totalAcceptedChars];
+    fa->xOffsets = new unsigned int[totalAcceptedChars];
+    fa->yOffsets = new unsigned int[totalAcceptedChars];
+    fa->characterCodes = new unsigned short[totalAcceptedChars];
 
     unsigned int totalWidth = 0;
     unsigned int totalHeight = 0;
     for(int i = 0; i < rects.totalRects; i++){
-        ba.widths[i] = rects.get(i).width;
-        ba.heights[i] = rects.get(i).height;
-        ba.xOffsets[i] = rects.get(i).left;
-        ba.yOffsets[i] = rects.get(i).bottom;
+        fa->widths[i] = rects.get(i).width;
+        fa->heights[i] = rects.get(i).height;
+        fa->xOffsets[i] = rects.get(i).left;
+        fa->yOffsets[i] = rects.get(i).bottom;
+        fa->characterCodes[i] = rects.get(i).bitmap.charCode;
         if(rects.get(i).right > totalWidth){
             totalWidth = rects.get(i).right;
         }
@@ -242,41 +247,8 @@ BitmapAtlas createBitmapAtlas(Bitmap* bitmaps, unsigned int totalBitmaps){
         }
     }
 
-    ba.bitmapData = bitmapData;
-    ba.totalWidth = totalWidth;
-    ba.totalHeight = totalHeight;
-    ba.totalBitmaps = totalBitmaps;
-    return ba;
-}
-
-Bitmap combine2Bitmaps(Bitmap b1, Bitmap b2){
-    Bitmap result;
-    result.width = b1.width + b2.width;
-    if(b1.height >= b2.height){
-        result.height = b1.height;
-    }else{
-        result.height = b2.height;
-    }
-
-    result.bytes = new unsigned char[result.width * result.height];
-
-    for(int i = 0; i < result.height; i++){
-        for(int j = 0; j < result.width; j++){
-            if(j < b1.width){
-                if(i < b1.height){
-                    result.bytes[(i * result.width) + j] = b1.bytes[(i * b1.width) + j];
-                }else{
-                    result.bytes[(i * result.width) + j] = 0;
-                }
-            }else{
-                if(i < b2.height){
-                    result.bytes[(i * result.width) + j] = b2.bytes[(i * b2.width) + (j - b1.width)];
-                }else{
-                    result.bytes[(i * result.width) + j] = 0;
-                }
-            }
-        }
-    }
-    
-    return result;
+    fa->bitmap = bitmapData;
+    fa->totalBitmapWidth = totalWidth;
+    fa->totalBitmapHeight = totalHeight;
+    fa->totalCharacters = totalAcceptedChars;
 }

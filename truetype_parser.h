@@ -277,8 +277,6 @@ unsigned char* getPointerToGlyphData(unsigned char* fileData, unsigned short cha
             ro = SWAP16(ro);
 
             if(ec >= characterCode){
-                //printf("%c: endCode:%i\tstartCode:%i\tidDelta:%i\tidRangeOffset:%i\t\n", characterCode, ec, sc, id, ro);
-                //printf("character code: %i\n", characterCode);
                 if(ro != 0){
                     unsigned short* addr = &idRangeOffset[i];
                     addr += ro;
@@ -291,8 +289,6 @@ unsigned char* getPointerToGlyphData(unsigned char* fileData, unsigned short cha
                     }
                 }else{
                     glyphIndex = (characterCode + id) % 65536;
-                    //printf("id: %i\n", id);
-                    //printf("glyphIndex: %i\n", glyphIndex);
                 }
 
                 break;
@@ -308,20 +304,18 @@ unsigned char* getPointerToGlyphData(unsigned char* fileData, unsigned short cha
             unsigned short* loca = (unsigned short*)getPointerToTableData(fileData, "loca");
             loca += glyphIndex;
             unsigned short glf = SWAP16(*loca) / 2;
-            //printf("glyph offset short: %i\n", glf);
-
             //TODO: check and finish this
         }else if(fontFormat == 1){
             unsigned int* loca = (unsigned int*)getPointerToTableData(fileData, "loca");
             loca += glyphIndex;
             unsigned int glf = SWAP32(*loca);
-            //printf("glyph offset long: %i\n", glf);
-
             unsigned char* glyf = getPointerToTableData(fileData, "glyf");
             glyf += glf;
             
             return glyf;
         }
+    }else{
+        //TODO: Handle other formats besides 4
     }
 
     return getPointerToTableData(fileData, "glyf");
@@ -358,7 +352,6 @@ void getGlyphShape(unsigned char* fileData, unsigned short characterCode, GlyphS
 
     unsigned short instLn = SWAP16(*contourEndPoints);
     contourEndPoints++;
-    //printf("instructions length: %i\n", instLn);
     unsigned char* inst = (unsigned char*)(contourEndPoints) + instLn;
 
     int totalPoints = shape->contourEndPoints[gg.numberOfContours - 1] + 1;
