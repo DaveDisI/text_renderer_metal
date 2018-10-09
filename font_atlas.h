@@ -11,5 +11,6 @@ struct FontAtlas{
     unsigned int* yOffsets;
     unsigned int* widths;
     unsigned int* heights;
-    unsigned int* descents;
+    float* xShifts;
+    float* yShifts;
 };

@@ -76,6 +76,23 @@ struct Cmap{
     CmapSubtable subtable;
 };
 
+struct HheaTable{
+    Fixed version;
+    short ascent;
+    short descent;
+    short lineGap;
+    unsigned short advanceWidthMax;
+    short minLeftSideBearing;
+    short minRightSideBearing;
+    short xMaxExtent;
+    short caretSlopeRise;
+    short caretSlopeRun;
+    short caretOffset;
+    unsigned long reserved;
+    short metricDataFormat;
+    unsigned short numOfLongHorMetrics;
+};
+
 struct MaxpTable{
     unsigned int version;
     unsigned short numGlyphs;
@@ -245,10 +262,7 @@ unsigned char* getPointerToTableData(unsigned char* fileData, const char* table)
     return 0;
 }
 
-unsigned char* getPointerToGlyphData(unsigned char* fileData, unsigned short characterCode){
-    HeadTable* ht = (HeadTable*)getPointerToTableData(fileData, "head");
-    unsigned short fontFormat = SWAP16(ht->indexToLocFont);
-    
+unsigned int getGlyphIndex(unsigned char* fileData, unsigned short characterCode){
     CmapIndex* ci = (CmapIndex*)getPointerToTableData(fileData, "cmap");
     unsigned int offset = SWAP32(ci->offset);
 
@@ -299,24 +313,33 @@ unsigned char* getPointerToGlyphData(unsigned char* fileData, unsigned short cha
             idDelta++;
             idRangeOffset++;
         }
-        
-        if(fontFormat == 0){
-            unsigned short* loca = (unsigned short*)getPointerToTableData(fileData, "loca");
-            loca += glyphIndex;
-            unsigned short glf = SWAP16(*loca) / 2;
-            //TODO: check and finish this
-        }else if(fontFormat == 1){
-            unsigned int* loca = (unsigned int*)getPointerToTableData(fileData, "loca");
-            loca += glyphIndex;
-            unsigned int glf = SWAP32(*loca);
-            unsigned char* glyf = getPointerToTableData(fileData, "glyf");
-            glyf += glf;
-            
-            return glyf;
-        }
     }else{
         //TODO: Handle other formats besides 4
     }
+
+    return glyphIndex;
+}
+
+unsigned char* getPointerToGlyphData(unsigned char* fileData, unsigned short characterCode){
+    HeadTable* ht = (HeadTable*)getPointerToTableData(fileData, "head");
+    unsigned short fontFormat = SWAP16(ht->indexToLocFont);
+    unsigned int glyphIndex = getGlyphIndex(fileData, characterCode);
+    
+    if(fontFormat == 0){
+        unsigned short* loca = (unsigned short*)getPointerToTableData(fileData, "loca");
+        loca += glyphIndex;
+        unsigned short glf = SWAP16(*loca) / 2;
+        //TODO: check and finish this
+    }else if(fontFormat == 1){
+        unsigned int* loca = (unsigned int*)getPointerToTableData(fileData, "loca");
+        loca += glyphIndex;
+        unsigned int glf = SWAP32(*loca);
+        unsigned char* glyf = getPointerToTableData(fileData, "glyf");
+        glyf += glf;
+        
+        return glyf;
+    }
+    
 
     return getPointerToTableData(fileData, "glyf");
 }
@@ -487,6 +510,24 @@ void getGlyphLines(GlyphShape g, LineGroup& lg){
     }
 }
 
+unsigned short getGlyphAdvance(unsigned char* fileData, unsigned short characterCode){
+    HheaTable* hhea = (HheaTable*)getPointerToTableData(fileData, "hhea");
+    unsigned short numOfLongHorMetrics = SWAP16(hhea->numOfLongHorMetrics);
+    unsigned short* hmtx = (unsigned short*)getPointerToTableData(fileData, "hmtx");
+    MaxpTable* mp = (MaxpTable*)getPointerToTableData(fileData, "maxp");
+    unsigned short numGlyphs = SWAP16(mp->numGlyphs);
+    unsigned short adv = 0;
+
+    if(numOfLongHorMetrics == numGlyphs){
+        unsigned int indx = getGlyphIndex(fileData, characterCode);
+        adv = SWAP16(hmtx[indx * 2]); 
+    }else{
+        //TODO: This may not be correct
+        adv = SWAP16(hmtx[0]); 
+    }
+    return adv;
+}
+
 bool isPixelInside(float x, float y, LineGroup lg){
     int windCount = 0;
 
@@ -549,11 +590,14 @@ unsigned char* getBitmapFromCharCode(unsigned char* fileData, unsigned short cha
     return bitmap;
 }
 
-unsigned char* getReducedBitmapFromCharCode(unsigned char* fileData, unsigned short characterCode, unsigned int* width, unsigned int* height, unsigned int divisions){
+unsigned char* getReducedBitmapFromCharCode(unsigned char* fileData, unsigned short characterCode, unsigned int* width, unsigned int* height, float* horzBng, float* vertBng, unsigned int divisions){
     GlyphShape gs;
     getGlyphShape(fileData, characterCode, &gs);
     LineGroup lg;
     getGlyphLines(gs, lg);
+
+    *horzBng = (float)getGlyphAdvance(fileData, characterCode) / (float)divisions;
+    *vertBng = (float)gs.yMin / (float)divisions;
 
     unsigned int gWidth = gs.xMax - gs.xMin;
     unsigned int gHeight = gs.yMax - gs.yMin;

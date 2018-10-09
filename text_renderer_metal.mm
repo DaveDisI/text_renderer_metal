@@ -37,51 +37,56 @@ fragment float4 fragmentShader(VertOutData in [[stage_in]], texture2d<half> colo
 
 int vertexCount = 0;
 
-void renderText(float* vecPtr, FontAtlas* fa, const char* text, int x, int y, unsigned int scale){
+void renderText(float* vecPtr, FontAtlas* fa, const char* text, int x, int y, float scale){
     int ctr = 0;
     int xMarker = x;
     while(*text != '\0'){
         char c = *text;
         for(int i = 0; i < fa->totalCharacters; i++){
             if(c == fa->characterCodes[i]){
-                printf("characterCode: %c\n", fa->characterCodes[i]);
-                printf("width: %i\n", fa->widths[i]);
-                printf("height: %i\n", fa->heights[i]);
-                printf("xOffset: %i\n", fa->xOffsets[i]);
-                printf("yOffset: %i\n", fa->yOffsets[i]);
-                printf("totalWidth: %i\n", fa->totalBitmapWidth);
-                printf("totalHeight: %i\n", fa->totalBitmapHeight);
+                if(c == ' '){
+                    xMarker += (fa->xShifts[i] * scale);
+                    break;
+                }
 
+                float left = xMarker;
+                float right = (float)xMarker + ((float)fa->widths[i] * scale);
+                float bottom = y + (fa->yShifts[i] * scale);
+                float top = y + ((fa->heights[i] + fa->yShifts[i]) * scale);
+                float tleft = (float)fa->xOffsets[i] / (float)fa->totalBitmapWidth;
+                float tright = (float)(fa->xOffsets[i] + fa->widths[i]) / (float)fa->totalBitmapWidth;
+                float tbottom = (float)fa->yOffsets[i] / (float)fa->totalBitmapHeight;
+                float ttop = (float)(fa->yOffsets[i] + fa->heights[i]) / (float)fa->totalBitmapHeight;
 
-                vecPtr[ctr++] = xMarker; vecPtr[ctr++] = y;
-                vecPtr[ctr++] = (float)fa->xOffsets[i] / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)fa->yOffsets[i] / (float)fa->totalBitmapHeight;
+                vecPtr[ctr++] = left; vecPtr[ctr++] = bottom;
+                vecPtr[ctr++] = tleft; vecPtr[ctr++] = tbottom;
                 vertexCount++;
 
-                vecPtr[ctr++] = xMarker; vecPtr[ctr++] = y + fa->heights[i];
-                vecPtr[ctr++] = (float)fa->xOffsets[i] / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)(fa->yOffsets[i] + fa->heights[i]) / (float)fa->totalBitmapHeight;
+                vecPtr[ctr++] = left; vecPtr[ctr++] = top;
+                vecPtr[ctr++] = tleft; vecPtr[ctr++] = ttop;
                 vertexCount++;
 
-                vecPtr[ctr++] = xMarker + fa->widths[i]; vecPtr[ctr++] = y + fa->heights[i];
-                vecPtr[ctr++] = (float)(fa->xOffsets[i] + fa->widths[i]) / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)(fa->yOffsets[i] + fa->heights[i]) / (float)fa->totalBitmapHeight;
+                vecPtr[ctr++] = right; vecPtr[ctr++] = top;
+                vecPtr[ctr++] = tright; vecPtr[ctr++] = ttop;
                 vertexCount++;
 
-                vecPtr[ctr++] = xMarker + fa->widths[i]; vecPtr[ctr++] = y + fa->heights[i];
-                vecPtr[ctr++] = (float)(fa->xOffsets[i] + fa->widths[i]) / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)(fa->yOffsets[i] + fa->heights[i]) / (float)fa->totalBitmapHeight;
+                vecPtr[ctr++] = right; vecPtr[ctr++] = top;
+                vecPtr[ctr++] = tright; vecPtr[ctr++] = ttop;
                 vertexCount++;
 
-                vecPtr[ctr++] = xMarker + fa->widths[i]; vecPtr[ctr++] = y;
-                vecPtr[ctr++] = (float)(fa->xOffsets[i] + fa->widths[i]) / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)fa->yOffsets[i] / (float)fa->totalBitmapHeight;
+                vecPtr[ctr++] = right; vecPtr[ctr++] = bottom;
+                vecPtr[ctr++] = tright; vecPtr[ctr++] = tbottom;
                 vertexCount++;
 
-                vecPtr[ctr++] = xMarker; vecPtr[ctr++] = y;
-                vecPtr[ctr++] = (float)fa->xOffsets[i] / (float)fa->totalBitmapWidth; vecPtr[ctr++] = (float)fa->yOffsets[i] / (float)fa->totalBitmapHeight;
+                vecPtr[ctr++] = left; vecPtr[ctr++] = bottom;
+                vecPtr[ctr++] = tleft; vecPtr[ctr++] = tbottom;
                 vertexCount++;
 
-                xMarker += fa->widths[i];
+                xMarker += (fa->xShifts[i] * scale);
                 break;
             }
         }
-        text++;
+        text ++;
     }
 }
 
@@ -89,15 +94,16 @@ int main(int argc, char** argv){
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     [NSApp sharedApplication];
 
-    NSData* dta = [NSData dataWithContentsOfFile: @"Courier New.ttf"];
+    NSData* dta = [NSData dataWithContentsOfFile: @"Times New Roman.ttf"];
     unsigned char* fontData = (unsigned char*)[dta bytes];
 
     unsigned short* charCodes = new unsigned short[95];
-    for(int i = 0; i < 95; i++){
+    int numChars = 95;
+    for(int i = 0; i < numChars; i++){
         charCodes[i] = (unsigned short)(i + 32);
     }
     FontAtlas fa;
-    buildFontAtlas(&fa, fontData, 95, charCodes);
+    buildFontAtlas(&fa, fontData, numChars, charCodes);
 
     unsigned char* bitmap = fa.bitmap;
     unsigned int glyphWidth = fa.totalBitmapWidth; 
@@ -127,6 +133,7 @@ int main(int argc, char** argv){
     id<MTLRenderPipelineState> pipelineState;
     id<MTLCommandQueue> commandQueue;
     unsigned int width, height;
+
     MTKView * view = [[MTKView alloc] initWithFrame: viewRect
                                              device: device];
     view.clearColor = MTLClearColorMake(0.2, 0.4, 0.7, 1);
@@ -189,11 +196,11 @@ int main(int argc, char** argv){
 
     mat4 mvp = setOrthogonalProjection(0, 900, 0, 500, -1, 1);
 
-    id<MTLBuffer> vertBuffer = [device newBufferWithLength:1000
+    id<MTLBuffer> vertBuffer = [device newBufferWithLength:64000
                                         options: MTLResourceStorageModeShared];
     float* vpvp = (float*)vertBuffer.contents;
 
-    renderText(vpvp, &fa, "Oh My God! Texters", 0, 0, 1);
+    renderText(vpvp, &fa, "T3$t to icuL@r", 10, 100, 1);
 
     id<MTLBuffer> uniBuffer = [device newBufferWithBytes: &mvp.m[0][0]
                                         length: sizeof(float) * 16

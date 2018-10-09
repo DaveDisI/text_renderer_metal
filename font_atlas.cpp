@@ -6,6 +6,8 @@ struct Bitmap {
     unsigned int height;
     unsigned short charCode;
     unsigned char* bytes;
+    float xShift;
+    float yShift;
 
     Bitmap(){}
     Bitmap(unsigned char* bytes, unsigned width, unsigned height): width(width), height(height), bytes(bytes){}
@@ -185,7 +187,8 @@ void clearFontAtlas(FontAtlas* fa){
     if(fa->yOffsets) delete[] fa->yOffsets;
     if(fa->widths) delete[] fa->widths;
     if(fa->heights) delete[] fa->heights;
-    if(fa->descents) delete[] fa->descents;
+    if(fa->xShifts) delete[] fa->xShifts;
+    if(fa->yShifts) delete[] fa->yShifts;
 }
 
 void buildFontAtlas(FontAtlas* fa, unsigned char* fontFileData, unsigned int totalCharacters, unsigned short* charCodes){
@@ -193,17 +196,20 @@ void buildFontAtlas(FontAtlas* fa, unsigned char* fontFileData, unsigned int tot
     Bitmap* bitmaps = new Bitmap[totalCharacters];
     for(int i = 0; i < totalCharacters; i++){
         unsigned int w, h;
-        unsigned char* dats = getReducedBitmapFromCharCode(fontFileData, charCodes[i], &w, &h, 32);
+        float ho, v;
+        unsigned char* dats = getReducedBitmapFromCharCode(fontFileData, charCodes[i], &w, &h, &ho, &v, 32);
         if(dats){
             bitmaps[totalAcceptedChars].bytes = dats;
             bitmaps[totalAcceptedChars].width = w;
             bitmaps[totalAcceptedChars].height = h;
+            bitmaps[totalAcceptedChars].xShift = ho;
+            bitmaps[totalAcceptedChars].yShift = v;
             bitmaps[totalAcceptedChars].charCode = charCodes[i];
             totalAcceptedChars++;
         }
     }
 
-    static const unsigned int MAX_SIZE = 375;
+    static const unsigned int MAX_SIZE = 20000;
     sortBitmapsByDescendingArea(bitmaps, totalAcceptedChars);
     RectNode* node = new RectNode;
     node->rect = Rectangle(0, MAX_SIZE, 0, MAX_SIZE);
@@ -218,7 +224,9 @@ void buildFontAtlas(FontAtlas* fa, unsigned char* fontFileData, unsigned int tot
     fa->heights = new unsigned int[totalAcceptedChars];
     fa->xOffsets = new unsigned int[totalAcceptedChars];
     fa->yOffsets = new unsigned int[totalAcceptedChars];
-    fa->characterCodes = new unsigned short[totalAcceptedChars];
+    fa->xShifts = new float[totalAcceptedChars];
+    fa->yShifts = new float[totalAcceptedChars];
+    fa->characterCodes = new unsigned short[totalAcceptedChars];  
 
     unsigned int totalWidth = 0;
     unsigned int totalHeight = 0;
@@ -228,6 +236,9 @@ void buildFontAtlas(FontAtlas* fa, unsigned char* fontFileData, unsigned int tot
         fa->xOffsets[i] = rects.get(i).left;
         fa->yOffsets[i] = rects.get(i).bottom;
         fa->characterCodes[i] = rects.get(i).bitmap.charCode;
+        fa->xShifts[i] = rects.get(i).bitmap.xShift;
+        fa->yShifts[i] = rects.get(i).bitmap.yShift;
+
         if(rects.get(i).right > totalWidth){
             totalWidth = rects.get(i).right;
         }
